@@ -1,0 +1,34 @@
+{
+  "version": "v7",
+  "core_questions": 14,
+  "material_count": 235607,
+  "real_api_checks": {
+    "character_followup": true,
+    "setting_followup": true,
+    "browser_followup": true,
+    "retrieved_candidates": 12,
+    "source_adapted_options_in_browser_example": 1,
+    "story_word_count": 4744
+  },
+  "automated_checks": {
+    "node_tests_passed": 11,
+    "browser_mocked_long_session": {
+      "total_answers": 47,
+      "reminders_at": [
+        26,
+        36,
+        46
+      ],
+      "continues_beyond_ten_followups": true,
+      "parent_links": true,
+      "generation_version_save": true,
+      "mobile_layout": true
+    }
+  },
+  "method_note": "Threshold browser checks use controlled API fixtures. Separate live API and browser checks verify real DeepSeek and SQLite retrieval.",
+  "known_limits": [
+    "Only character follow-ups retrieve Story Commonsense motivation/emotion annotations. Other categories use AI-authored contextual suggestions.",
+    "Checks validate structure and references, not semantic correctness.",
+    "This is a local development preview, not a production deployment."
+  ]
+}
