@@ -19,7 +19,15 @@ function heading(text, level = HeadingLevel.HEADING_1) {
 
 export async function downloadWord(record, questions, kind) {
   const content = [];
-  if (kind === "story") {
+  const freeMode = record.mode === "free";
+  const combined = freeMode && kind === "prompt-and-story";
+  if (combined) {
+    content.push(heading(record.title || "My story", HeadingLevel.TITLE));
+    content.push(heading("Original Free Writing prompt"));
+    content.push(paragraph(record.free || "No prompt saved."));
+    content.push(heading("Story"));
+  }
+  if (kind === "story" || combined) {
     const blocks = record.story
       .split(/\n\s*\n/)
       .map((block) => block.trim())
@@ -33,7 +41,7 @@ export async function downloadWord(record, questions, kind) {
   } else {
     content.push(
       heading(
-        `${record.title || "My story"} — Questions and choices`,
+        `${record.title || "My story"} — ${freeMode ? "Free Writing prompt" : "Questions and choices"}`,
         HeadingLevel.TITLE,
       ),
     );
@@ -44,7 +52,7 @@ export async function downloadWord(record, questions, kind) {
     );
     if (record.name) content.push(paragraph(`Main character: ${record.name}`));
     if (record.mode === "free") {
-      content.push(heading("Your writing instructions"));
+      content.push(heading("Your original Free Writing prompt"));
       content.push(paragraph(record.free || "No instructions entered."));
     } else {
       content.push(
@@ -86,57 +94,3 @@ export async function downloadWord(record, questions, kind) {
             ],
           }),
         );
-        if (modification.modified && modification.original) {
-          content.push(
-            paragraph(`Original wording: ${modification.original}`, {
-              children: [
-                new TextRun({
-                  text: `Original wording: ${modification.original}`,
-                  color: "666666",
-                }),
-              ],
-            }),
-          );
-        }
-        if (snapshot?.options?.length) {
-          content.push(
-            paragraph("Suggestions shown when this answer was saved:"),
-          );
-          snapshot.options.forEach((option, optionIndex) =>
-            content.push(
-              paragraph(`${String.fromCharCode(65 + optionIndex)}. ${option}`),
-            ),
-          );
-        } else {
-          content.push(
-            paragraph(
-              "The original suggestion batch was not recorded for this entry.",
-            ),
-          );
-        }
-      }
-    }
-  }
-
-  const document = new Document({
-    title:
-      kind === "story" ? record.title : "StorySpring questions and choices",
-    creator: "StorySpring",
-    styles: {
-      default: {
-        document: { run: { font: "Arial", size: 22, color: "222222" } },
-      },
-    },
-    sections: [{ children: content }],
-  });
-  const blob = await Packer.toBlob(document);
-  const url = URL.createObjectURL(blob);
-  const anchor = globalThis.document.createElement("a");
-  anchor.href = url;
-  const name = (record.title || "StorySpring")
-    .replace(/[<>:"/\\|?*]/g, "")
-    .slice(0, 90);
-  anchor.download = `${name}-${kind}.docx`;
-  anchor.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
