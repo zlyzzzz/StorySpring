@@ -1250,7 +1250,7 @@ function annotationSummary(record) {
     if (record.annotationError) return `<p role="alert">${escape(record.annotationError)} <button id="retry-markers">Retry prompt highlights</button></p>`;
     // Global prompt requirements may not have a single passage suitable for highlighting.
     const count = record.promptAnnotations?.length || 0;
-    return `<p class="annotation-status">${count ? `${count} prompt connections located.` : "No specific prompt passages were located."} Some prompt details, such as tone, theme or structure, may be reflected across the whole story rather than in a specific passage. Missing highlights do not necessarily mean these details were omitted. Highlights show interpreted connections and may be incomplete; they do not confirm that every instruction was satisfied.</p>`;
+    return `<p class="annotation-status">${count ? `${count} prompt connections located.` : "No specific prompt passages were located."} ${record.mode !== "free" ? `<button data-export-choices="${record.id}">Download questions & choices</button>` : ""} </p>`;
   }
   if (record.annotationBusy)
     return '<p class="annotation-status" role="status">Locating passages that reflect your choices… You can continue reading.</p>';
