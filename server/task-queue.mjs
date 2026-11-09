@@ -94,3 +94,213 @@ export class TaskQueue {
       ) {
         throw taskError("Invalid task identity. Reload the page and retry.");
       }
+      const digest = createHash("sha256")
+        .update(JSON.stringify({ type, input }))
+        .digest("hex");
+      const previous = this.jobs.get(this.requests.get(requestId));
+      if (previous) {
+        this.authorize(previous, token);
+        if (previous.digest !== digest)
+          throw taskError(
+            "This task identity belongs to another request.",
+            409,
+          );
+        return this.publicJob(previous);
+      }
+      if (
+        [...this.jobs.values()].filter((j) => j.status === "queued").length >=
+        this.maxWaiting
+      ) {
+        throw taskError(
+          "The waiting list is full. Your answers are saved; please retry shortly.",
+          429,
+        );
+      }
+      const job = {
+        id: randomUUID(),
+        requestId,
+        token,
+        digest,
+        type,
+        input,
+        status: "queued",
+        createdAt: Date.now(),
+      };
+      await this.write(job);
+      this.jobs.set(job.id, job);
+      this.requests.set(requestId, job.id);
+      this.pump();
+      return this.publicJob(job);
+    });
+    this.lock = operation.catch(() => {});
+    return operation;
+  }
+
+  authorize(job, token) {
+    const actual = Buffer.from(typeof token === "string" ? token : "");
+    const expected = Buffer.from(job.token);
+    if (
+      actual.length !== expected.length ||
+      !timingSafeEqual(actual, expected)
+    ) {
+      throw taskError("Task not found or access denied.", 404);
+    }
+  }
+
+  get(id, token) {
+    const job = this.jobs.get(id);
+    if (
+      !job ||
+      (job.status !== "running" && Date.now() - job.createdAt > this.ttlMs)
+    ) {
+      throw taskError(
+        "This task expired. Your saved draft is unchanged; submit again.",
+        404,
+      );
+    }
+    this.authorize(job, token);
+    return this.publicJob(job);
+  }
+
+  publicJob(job) {
+    const waiting = [...this.jobs.values()]
+      .filter((j) => j.status === "queued")
+      .sort((a, b) => a.createdAt - b.createdAt);
+    return {
+      jobId: job.id,
+      status: job.status,
+      elapsedMs: Math.max(0, Date.now() - job.createdAt),
+      timing: this.estimate(job, waiting),
+      position:
+        job.status === "queued"
+          ? waiting.findIndex((j) => j.id === job.id) + 1
+          : 0,
+      pollAfterMs:
+        job.type === "/api/generate" && job.status === "running" ? 700 : 2000,
+      ...(job.status === "running" && job.previewText !== undefined
+        ? { previewText: job.previewText, phase: job.phase || "generating" }
+        : {}),
+      ...(job.status === "succeeded" ? { result: job.result } : {}),
+      ...(job.status === "failed" ? { error: job.error } : {}),
+    };
+  }
+
+  estimate(job, waiting) {
+    // Use recent successful jobs of the same endpoint; never invent a cold-start ETA.
+    const samples = [...this.jobs.values()]
+      .filter((item) => item.type === job.type && item.status === "succeeded" &&
+        item.startedAt && item.finishedAt > item.startedAt)
+      .sort((a, b) => b.finishedAt - a.finishedAt)
+      .slice(0, 50)
+      .map((item) => item.finishedAt - item.startedAt)
+      .sort((a, b) => a - b);
+    if (samples.length < 5 || !["queued", "running"].includes(job.status)) return null;
+    const low = samples[Math.floor((samples.length - 1) * 0.2)];
+    const high = samples[Math.ceil((samples.length - 1) * 0.9)];
+    const now = Date.now();
+    if (job.status === "running") {
+      const elapsed = Math.max(0, now - job.startedAt);
+      return { minMs: Math.max(0, low - elapsed), maxMs: Math.max(0, high - elapsed),
+        overdue: elapsed >= high, samples: samples.length };
+    }
+    // Simulate FIFO worker availability, including mixed endpoint workloads.
+    const duration = (type) => {
+      const values = [...this.jobs.values()].filter((item) => item.type === type &&
+        item.status === "succeeded" && item.startedAt && item.finishedAt > item.startedAt)
+        .sort((a, b) => b.finishedAt - a.finishedAt).slice(0, 50)
+        .map((item) => item.finishedAt - item.startedAt).sort((a, b) => a - b);
+      return values.length >= 5 ? values[Math.ceil((values.length - 1) * 0.9)] : null;
+    };
+    const slots = [];
+    for (const active of this.jobs.values()) {
+      if (active.status !== "running") continue;
+      const expected = duration(active.type);
+      if (expected === null || now - active.startedAt >= expected) return null;
+      slots.push(expected - (now - active.startedAt));
+    }
+    while (slots.length < this.concurrency) slots.push(0);
+    for (const queued of waiting) {
+      slots.sort((a, b) => a - b);
+      const available = slots[0];
+      if (queued.id === job.id)
+        return { minMs: available + low, maxMs: available + high,
+          overdue: false, samples: samples.length };
+      const expected = duration(queued.type);
+      if (expected === null) return null;
+      slots[0] += expected;
+    }
+    return null;
+  }
+
+  async pump() {
+    if (this.pumping || this.closed) return;
+    this.pumping = true;
+    try {
+      while (this.active < this.concurrency && !this.closed) {
+        const job = [...this.jobs.values()]
+          .filter((j) => j.status === "queued")
+          .sort((a, b) => a.createdAt - b.createdAt)[0];
+        if (!job) break;
+        job.status = "running";
+        job.startedAt = Date.now();
+        this.active++;
+        // run() owns the slot until the final result has been persisted.
+        this.run(job).catch(() => {});
+      }
+    } finally {
+      this.pumping = false;
+    }
+  }
+
+  async run(job) {
+    try {
+      await this.write(job);
+      job.result = await this.runner(job.type, job.input, (progress) => {
+        // Preview is transient and protected by the task token; persist only completed text.
+        job.previewText = progress.text;
+        job.phase = progress.phase;
+      });
+      job.status = "succeeded";
+    } catch (error) {
+      job.status = "failed";
+      job.error = error.message || "The task failed. Your answers are saved.";
+    }
+    delete job.previewText;
+    delete job.phase;
+    job.finishedAt = Date.now();
+    // Do not retain the submitted prompt in completed task records unnecessarily.
+    delete job.input;
+    try {
+      await this.write(job);
+    } catch {
+      job.status = "failed";
+      job.error =
+        "The server could not store this result. Please retry from your saved draft.";
+    } finally {
+      this.active--;
+      this.pump();
+    }
+  }
+
+  async expire() {
+    for (const file of await fs.readdir(this.directory)) {
+      if (!file.endsWith(".tmp")) continue;
+      const filename = path.join(this.directory, file);
+      const stat = await fs.stat(filename).catch(() => null);
+      if (stat && Date.now() - stat.mtimeMs > this.ttlMs)
+        await fs.unlink(filename).catch(() => {});
+    }
+    for (const [id, job] of this.jobs) {
+      if (job.status === "running" || Date.now() - job.createdAt <= this.ttlMs)
+        continue;
+      this.jobs.delete(id);
+      this.requests.delete(job.requestId);
+      await fs.unlink(path.join(this.directory, `${id}.json`)).catch(() => {});
+    }
+  }
+
+  close() {
+    this.closed = true;
+    clearInterval(this.timer);
+  }
+}
