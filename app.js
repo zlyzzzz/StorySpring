@@ -416,9 +416,61 @@ async function requestOptionBank() {
   }
 }
 
+// Each question keeps its own browser-local batch history. Saving full editor
+// snapshots lets users return without losing edits, selected options or free text.
+function optionBatchHistory() {
+  const question = currentQuestion();
+  const record = currentRecord();
+  if (!question || question.loading || !record) return null;
+  record.suggestionHistory ||= {};
+  const history = (record.suggestionHistory[question.id] ||= {
+    texts: [],
+    cycleTexts: [],
+  });
+  const context = JSON.stringify({
+    bankVersion: presets.version,
+    parent: question.adaptive ? question.contextSnapshot : null,
+    name: question.adaptive ? question.contextName : null,
+  });
+  if (history.batchNavigation?.context !== context) {
+    history.batchNavigation = { context, past: [], future: [] };
+  }
+  return history.batchNavigation;
+}
+
+function captureSuggestionBatch() {
+  return structuredClone({
+    candidates: state.candidates,
+    candidateMeta: state.candidateMeta,
+    selected: state.selected,
+    own: state.own,
+    batch: state.batch,
+  });
+}
+
+function moveSuggestionBatch(direction) {
+  if (state.refreshBusy || !optionBankReady(currentQuestion())) return;
+  const history = optionBatchHistory();
+  if (!history) return;
+  const source = direction < 0 ? history.past : history.future;
+  const destination = direction < 0 ? history.future : history.past;
+  if (!source.length) return;
+  destination.push(captureSuggestionBatch());
+  Object.assign(state, source.pop());
+  rememberShownOptions();
+  rememberPosition();
+  persist();
+  questionView();
+}
+
 async function refreshSuggestions() {
   const question = currentQuestion();
   if (!optionBankReady(question) || state.refreshBusy) return;
+  // Revisiting an existing batch never requests more AI suggestions.
+  if (optionBatchHistory()?.future.length) {
+    moveSuggestionBatch(1);
+    return;
+  }
   if (state.selected >= 0 || state.own.trim()) {
     settleTime();
     state.paused = true;
@@ -492,6 +544,11 @@ async function refreshSuggestions() {
     }
     result = { batch };
   }
+  // Only add a history entry after a replacement batch is ready.
+  // A failed request leaves the currently visible suggestions untouched.
+  const navigation = optionBatchHistory();
+  navigation.past.push(captureSuggestionBatch());
+  navigation.future = [];
   state.candidateMeta = result.batch;
   state.candidates = result.batch.map((option) => option.text);
   state.selected = -1;
@@ -782,7 +839,7 @@ function questionView() {
         <p class="hint">Select one suggestion. Edit its wording, or write your own answer.</p>
         ${nameField}
         <div class="options">${options}</div>
-        <div class="tools"><button id="refresh" ${question.extension && fullSuggestionPool(question).length >= ADAPTIVE_OPTION_LIMIT && !unseenBatch(fullSuggestionPool(question), currentRecord().suggestionHistory?.[question.id]?.texts || []) ? "disabled" : ""}>↻ New suggestions</button>${question.extension && fullSuggestionPool(question).length >= ADAPTIVE_OPTION_LIMIT && !unseenBatch(fullSuggestionPool(question), currentRecord().suggestionHistory?.[question.id]?.texts || []) ? '<span class="small-note">All 45 suggestions shown. You can still edit or write your own.</span>' : ""}</div>
+        <div class="tools"><button id="previous-batch" ${!optionBatchHistory()?.past.length || state.refreshBusy ? "disabled" : ""}>← Previous suggestions</button><button id="refresh" ${!optionBatchHistory()?.future.length && question.extension && fullSuggestionPool(question).length >= ADAPTIVE_OPTION_LIMIT && !unseenBatch(fullSuggestionPool(question), currentRecord().suggestionHistory?.[question.id]?.texts || []) ? "disabled" : ""}>↻ New suggestions</button>${question.extension && fullSuggestionPool(question).length >= ADAPTIVE_OPTION_LIMIT && !unseenBatch(fullSuggestionPool(question), currentRecord().suggestionHistory?.[question.id]?.texts || []) ? '<span class="small-note">All 45 suggestions shown. You can still edit or write your own.</span>' : ""}</div>
         <div class="option own-option ${state.selected === 3 ? "selected" : ""}">
           <button class="select-dot" data-select="3" aria-label="Select your own answer" aria-pressed="${state.selected === 3}"></button>
           <div><label for="own">Your own answer</label><textarea rows="2" id="own" placeholder="Write your own answer…" aria-label="Your own answer">${escape(state.own)}</textarea></div>
@@ -1462,6 +1519,10 @@ document.addEventListener("click", async (event) => {
     delete state.bankErrors[`${currentRecord().id}:${currentQuestion().id}`];
     requestOptionBank();
     render();
+    return;
+  }
+  if (button.id === "previous-batch") {
+    moveSuggestionBatch(-1);
     return;
   }
   if (button.id === "refresh") {
