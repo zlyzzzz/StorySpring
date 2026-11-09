@@ -80,6 +80,8 @@ const state = {
   paused: false,
   lastTick: Date.now(),
   showDeleted: false,
+  savedFilterDraft: { mode: "all", status: "all", query: "" },
+  savedFilters: { mode: "all", status: "all", query: "" },
   downloadRecordId: null,
   pendingFollowups: new Set(),
   followupErrors: {},
@@ -1129,14 +1131,64 @@ document.querySelector("#close-prompt").addEventListener("click", () => {
   document.querySelector("#prompt-dialog").close();
 });
 
+function filterSavedRecords(records, filters) {
+  const query = filters.query.trim().toLocaleLowerCase();
+  return records.filter((record) => {
+    const completed = Boolean(record.story?.trim());
+    const mode = record.mode === "free" ? "free" : "guided";
+    const searchable = [record.title, record.free, record.story,
+      ...Object.values(record.answers || {})].filter(Boolean).join(" ").toLocaleLowerCase();
+    return (filters.mode === "all" || filters.mode === mode) &&
+      (filters.status === "all" || (filters.status === "completed" ? completed : !completed)) &&
+      (!query || searchable.includes(query));
+  }).sort((a, b) => (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0));
+}
+
+function savedFilterPicker(field, label, options) {
+  const selected = state.savedFilterDraft[field];
+  const selectedLabel = options.find(([value]) => value === selected)?.[1] || options[0][1];
+  return `<div class="saved-filter-field"><span id="saved-${field}-label">${label}</span><details class="saved-filter-picker" data-saved-picker="${field}"><summary aria-labelledby="saved-${field}-label saved-${field}-value"><span id="saved-${field}-value">${selectedLabel}</span><span class="saved-filter-chevron" aria-hidden="true">⌄</span></summary><div class="saved-filter-options">${options.map(([value, text]) => `<button type="button" data-saved-filter="${field}" data-filter-value="${value}" aria-pressed="${value === selected}">${text}<span aria-hidden="true">${value === selected ? "✓" : ""}</span></button>`).join("")}</div></details></div>`;
+}
+
+function savedFilterBar(count, total) {
+  return `<form id="saved-filter-form" class="saved-filters" aria-label="Filter saved stories">${savedFilterPicker("mode", "Writing mode", [["all", "All modes"], ["guided", "Guided choices"], ["free", "Free writing"]])}${savedFilterPicker("status", "Completion status", [["all", "All statuses"], ["draft", "Draft"], ["completed", "Completed"]])}<label class="saved-filter-field saved-filter-keyword" for="saved-search">Search<input id="saved-search" type="search" value="${escape(state.savedFilterDraft.query)}" placeholder="Search titles or writing details…"></label><button type="submit" class="saved-filter-search">Search</button><div class="saved-filter-bottom"><button type="button" id="clear-saved-filters">Clear</button></div></form><div class="saved-filter-results"><span role="status" aria-live="polite">Showing ${count} of ${total} records</span><span>Most recent first</span></div>`;
+}
+
+function clearSavedFilters() {
+  state.savedFilterDraft = { mode: "all", status: "all", query: "" };
+  state.savedFilters = { ...state.savedFilterDraft };
+  savedStories();
+}
+
+document.addEventListener("submit", (event) => {
+  if (event.target.id !== "saved-filter-form") return;
+  event.preventDefault();
+  // Editing controls does not change results until Search is submitted.
+  state.savedFilters = { ...state.savedFilterDraft };
+  savedStories();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  document.querySelectorAll(".saved-filter-picker[open]").forEach((picker) => {
+    picker.open = false;
+    picker.querySelector("summary").focus();
+  });
+});
+
+document.addEventListener("click", (event) => {
+  document.querySelectorAll(".saved-filter-picker[open]").forEach((picker) => {
+    if (!picker.contains(event.target)) picker.open = false;
+  });
+});
+
 function savedStories() {
   const deletedCount = library.records.filter(
     (record) => record.deletedAt,
   ).length;
-  const records = library.records
-    .filter((record) => Boolean(record.deletedAt) === state.showDeleted)
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  app.innerHTML = `<p class="eyebrow">Saved on this browser</p><h1>Saved stories</h1><p class="muted">View your choices or prompt, read a story, download your work or restore a deleted record.</p><div class="toggle saved-tabs"><button id="active-records" class="${state.showDeleted ? "" : "active"}">Saved stories</button><button id="deleted-records" class="${state.showDeleted ? "active" : ""}">Recently deleted (${deletedCount})</button></div><div class="saved-list">${records.map((record) => `<article class="saved-card" data-record-id="${record.id}"><div><p class="eyebrow">${record.sample ? "Sample story" : record.story ? "Story" : "Draft"} · ${record.mode === "free" ? "Free writing" : "Guided choices"}</p><h2>${escape(record.title || "Untitled story")}</h2><p class="small-note">${record.mode === "free" ? "" : `${Object.keys(record.answers || {}).length} answers · `}Planning time: ${duration(record.activeMs)} · ${new Date(record.updatedAt).toLocaleDateString("en-GB")}</p></div><div class="record-actions">${state.showDeleted ? `<button data-restore-record="${record.id}">Restore</button>` : `<button data-view-choices="${record.id}">${record.mode === "free" ? "View prompt" : "View choices"}</button><button data-open="${record.id}" ${record.story ? "" : "disabled"}>View story</button><button data-download="${record.id}">Download</button><button data-delete-record="${record.id}">Delete</button>`}</div></article>`).join("") || `<div class="empty-records"><p>${state.showDeleted ? "No deleted records." : "Your saved stories will appear here."}</p></div>`}</div>`;
+  const available = library.records.filter((record) => Boolean(record.deletedAt) === state.showDeleted);
+  const records = filterSavedRecords(available, state.savedFilters);
+  app.innerHTML = `<p class="eyebrow">Saved on this browser</p><h1>Saved stories</h1><p class="muted">View your choices or prompt, read a story, download your work or restore a deleted record.</p><div class="toggle saved-tabs"><button id="active-records" class="${state.showDeleted ? "" : "active"}">Saved stories</button><button id="deleted-records" class="${state.showDeleted ? "active" : ""}">Recently deleted (${deletedCount})</button></div>${savedFilterBar(records.length, available.length)}<div class="saved-list">${records.map((record) => `<article class="saved-card" data-record-id="${record.id}"><div><p class="eyebrow">${record.sample ? "Sample story" : record.story ? "Story" : "Draft"} · ${record.mode === "free" ? "Free writing" : "Guided choices"}</p><h2>${escape(record.title || "Untitled story")}</h2><p class="small-note">${record.mode === "free" ? "" : `${Object.keys(record.answers || {}).length} answers · `}Planning time: ${duration(record.activeMs)} · ${new Date(record.updatedAt).toLocaleDateString("en-GB")}</p></div><div class="record-actions">${state.showDeleted ? `<button data-restore-record="${record.id}">Restore</button>` : `<button data-view-choices="${record.id}">${record.mode === "free" ? "View prompt" : "View choices"}</button><button data-open="${record.id}" ${record.story ? "" : "disabled"}>View story</button><button data-download="${record.id}">Download</button><button data-delete-record="${record.id}">Delete</button>`}</div></article>`).join("") || `<div class="empty-records"><p>${available.length ? "No matching records. Adjust your filters or choose Clear." : state.showDeleted ? "No deleted records." : "Your saved stories will appear here."}</p></div>`}</div>`;
 }
 
 function highlightedStory(record) {
@@ -1471,6 +1523,10 @@ async function exportRecord(id, kind, button) {
 
 document.addEventListener("input", (event) => {
   const target = event.target;
+  if (target.id === "saved-search") {
+    state.savedFilterDraft.query = target.value;
+    return;
+  }
   if (target.matches("[data-option]")) {
     state.selected = Number(target.dataset.option);
     state.candidates[state.selected] = target.value;
@@ -1510,6 +1566,27 @@ document.addEventListener("input", (event) => {
 document.addEventListener("click", async (event) => {
   const button = event.target.closest("button");
   if (!button) return;
+  if (button.id === "clear-saved-filters") {
+    clearSavedFilters();
+    return;
+  }
+  if (button.dataset.savedFilter) {
+    const field = button.dataset.savedFilter;
+    const value = button.dataset.filterValue;
+    const allowed = field === "mode" ? ["all", "guided", "free"] : ["all", "draft", "completed"];
+    if (!["mode", "status"].includes(field) || !allowed.includes(value)) return;
+    state.savedFilterDraft[field] = value;
+    const picker = button.closest(".saved-filter-picker");
+    document.getElementById(`saved-${field}-value`).textContent = button.firstChild.textContent;
+    picker.querySelectorAll("[data-filter-value]").forEach((option) => {
+      const selected = option.dataset.filterValue === value;
+      option.setAttribute("aria-pressed", String(selected));
+      option.querySelector("span").textContent = selected ? "✓" : "";
+    });
+    picker.open = false;
+    picker.querySelector("summary").focus();
+    return;
+  }
   if (button.dataset.view) {
     navigate(button.dataset.view);
     return;
