@@ -47,8 +47,8 @@
     {
       "category": "characters",
       "id": "motivation",
-      "zh": "在这个情境中，什么对他们重要？",
-      "question": "What matters to them in this situation?",
+      "zh": "什么对他重要？",
+      "question": "What matters to the character?",
       "extension": false
     },
     {
@@ -96,7 +96,7 @@
     {
       "id": "concern",
       "category": "characters",
-      "question": "What is on their mind when the story begins?",
+      "question": "What is on the character's mind when the story begins?",
       "zh": "故事开始时，他们在想什么？",
       "extension": false
     },
