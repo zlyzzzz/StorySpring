@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>StorySpring · Layout preview</title>
+    <link rel="stylesheet" href="styles.css?v=14" />
+  </head>
+  <body>
+    <div class="preview-note">Adaptive story creation · DeepSeek</div>
+    <header>
+      <button class="brand" data-view="home" aria-label="StorySpring home">
+        StorySpring<span>.</span>
+      </button>
+      <nav id="main-navigation" aria-label="Main navigation"></nav>
+    </header>
+    <div id="page-home-container" hidden>
+      <button class="home-link" data-view="home">← Back to home</button>
+    </div>
+    <div id="task-status" role="status" aria-live="polite" hidden></div>
+    <main id="app"></main>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <dialog id="delete-dialog">
+      <h2>Replace this detail?</h2>
+      <p>
+        This detail will be replaced with a compatible suggestion from the
+        sample pool. You can undo the replacement.
+      </p>
+      <div class="actions">
+        <button id="cancel-delete">Keep my detail</button
+        ><button class="primary" id="confirm-delete">Replace detail</button>
+      </div>
+    </dialog>
+    <dialog
+      tabindex="-1"
+      id="category-dialog"
+      aria-labelledby="category-reminder-title"
+    >
+      <p class="eyebrow">A moment to check in</p>
+      <h2 id="category-reminder-title">Ready to explore another category?</h2>
+      <p id="category-reminder-text"></p>
+      <div class="actions">
+        <button id="switch-category" aria-pressed="false">
+          Do not explore further
+        </button>
+        <button id="dismiss-reminder" aria-pressed="false">
+          Continue exploring
+        </button>
+      </div>
+    </dialog>
+    <dialog id="branch-edit-dialog" aria-labelledby="branch-edit-title">
+      <h2 id="branch-edit-title">Edit this answer?</h2>
+      <p id="branch-edit-description"></p>
+      <div class="actions">
+        <button id="cancel-branch-edit">Cancel</button
+        ><button id="confirm-branch-edit">Confirm</button>
+      </div>
+    </dialog>
+    <dialog id="record-delete-dialog" aria-labelledby="record-delete-title">
+      <h2 id="record-delete-title">Delete this saved story?</h2>
+      <p>
+        This moves the record to Recently deleted. You can restore it later on
+        this browser.
+      </p>
+      <div class="actions">
+        <button id="keep-record">Keep story</button
+        ><button class="primary" id="delete-record">Delete story</button>
+      </div>
+    </dialog>
+    <dialog id="download-dialog" aria-labelledby="download-title">
+      <h2 id="download-title">Download</h2>
+      <p>Choose what you would like to download as a Word document.</p>
+      <div class="download-options" id="download-options"></div>
+      <button class="page-back" id="close-download">Close</button>
+    </dialog>
+    <dialog id="generation-dialog" aria-labelledby="generation-title">
+      <h2 id="generation-title">Your story is taking shape.</h2>
+      <p role="status">
+        Creating approximately 2,000 words. Please keep this page open.
+      </p>
+      <article
+        id="live-story"
+        class="live-story"
+        aria-label="Story preview"
+        hidden
+      ></article>
+      <small>Preview only. The story is saved after generation finishes.</small>
+    </dialog>
+    <dialog id="refresh-dialog" aria-labelledby="refresh-title">
+      <h2 id="refresh-title">Finding new possibilities.</h2>
+      <p role="status">
+        Preparing fresh suggestions based on your answers. Please keep this page
+        open.
+      </p>
+    </dialog>
+    <dialog id="names-dialog" aria-labelledby="names-title">
+      <h2 id="names-title">Choose a name</h2>
+      <p>You can also type your own name in the character field.</p>
+      <div class="actions" id="name-options"></div>
+      <div class="actions">
+        <button id="more-names">More names</button
+        ><button id="close-names">Cancel</button>
+      </div>
+    </dialog>
+    <script type="module" src="app.js?v=14"></script>
+  </body>
+</html>
