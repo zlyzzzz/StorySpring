@@ -1261,7 +1261,7 @@ function annotationSummary(record) {
   );
   const entries = Object.entries(record.answers || {});
   const missing = entries.filter(([id]) => !ids.has(id));
-  return `<p class="annotation-status">Passages located for ${ids.size} / ${entries.length} choices. Markers indicate interpreted connections, not an automatic quality score.</p>${missing.length ? `<details class="annotation-missing"><summary>Choices without a located passage (${missing.length})</summary><ul>${missing.map(([id, answer]) => `<li>${escape(record.optionSnapshots?.[id]?.question || questionById(id)?.question || id)}: ${escape(answer)}</li>`).join("")}</ul></details>` : ""}`;
+  return `<p class="annotation-status">Passages located for ${ids.size} / ${entries.length} choices. Markers indicate interpreted connections.</p>${missing.length ? `<details class="annotation-missing"><summary>Choices without a located passage (${missing.length})</summary><ul>${missing.map(([id, answer]) => `<li>${escape(record.optionSnapshots?.[id]?.question || questionById(id)?.question || id)}: ${escape(answer)}</li>`).join("")}</ul></details>` : ""}`;
 }
 
 function reader() {
