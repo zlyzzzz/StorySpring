@@ -81,7 +81,7 @@ async function run(key, endpoint, body) {
   };
   stored[key] = identity;
   save(stored);
-  update(key, { endpoint, status: "submitting" });
+  update(key, { endpoint, status: "submitting", startedAt: identity.startedAt });
   let job;
   try {
     if (identity.jobId) {
@@ -94,72 +94,3 @@ async function run(key, endpoint, body) {
           const all = load();
           delete all[key];
           save(all);
-        }
-        throw error;
-      }
-    } else {
-      job = await request(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...body,
-          requestId: identity.requestId,
-          taskToken: identity.taskToken,
-        }),
-      });
-      // Preset endpoints and test fixtures can still return immediate results.
-      if (!job.jobId) {
-        const all = load();
-        delete all[key];
-        save(all);
-        return job;
-      }
-      identity.jobId = job.jobId;
-      const all = load();
-      all[key] = identity;
-      save(all);
-    }
-    const deadline = Date.now() + 30 * 60_000;
-    while (true) {
-      update(key, {
-        endpoint,
-        status: job.status,
-        position: job.position,
-        previewText: job.previewText,
-        phase: job.phase,
-      });
-      if (job.status === "succeeded" || job.status === "failed") {
-        const all = load();
-        delete all[key];
-        save(all);
-        if (job.status === "failed")
-          throw new Error(
-            job.error || "Generation failed. Your answers are saved.",
-          );
-        return job.result;
-      }
-      if (Date.now() > deadline)
-        throw new Error(
-          "This task is taking longer than expected. Your draft is saved; retry to check the same task.",
-        );
-      await wait(
-        Math.max(
-          endpoint === "/api/generate" ? 700 : 1500,
-          Math.min(5000, job.pollAfterMs || 2000),
-        ) +
-          Math.random() * 300,
-      );
-      job = await request(`/api/tasks/${identity.jobId}`, {
-        headers: { Authorization: `Bearer ${identity.taskToken}` },
-      });
-    }
-  } catch (error) {
-    // Terminal validation errors should not trap future submissions with an invalid identity.
-    if ([400, 404, 409].includes(error.status)) {
-      const all = load();
-      delete all[key];
-      save(all);
-    }
-    throw error;
-  }
-}
