@@ -69,6 +69,7 @@ export function forkStory(record) {
   draft.sourceVersion = record.id;
   draft.story = "";
   delete draft.choiceAnnotations;
+  delete draft.promptAnnotations;
   delete draft.choiceCoverage;
   delete draft.annotationBusy;
   delete draft.annotationError;
@@ -93,24 +94,3 @@ export function saveGeneratedVersion(library, draftId, story) {
     ) + 1;
   const generatedTitle = story.split("\n")[0].trim() || "Untitled story";
   const snapshot = structuredClone(draft);
-  snapshot.id = crypto.randomUUID();
-  snapshot.familyId = familyId;
-  snapshot.baseTitle = draft.baseTitle || generatedTitle;
-  snapshot.version = version;
-  snapshot.title = `${snapshot.baseTitle} (${version})`;
-  snapshot.story = story;
-  delete snapshot.choiceAnnotations;
-  delete snapshot.choiceCoverage;
-  delete snapshot.annotationBusy;
-  delete snapshot.annotationError;
-  snapshot.generatedAt = new Date().toISOString();
-  snapshot.updatedAt = snapshot.generatedAt;
-  delete snapshot.deletedAt;
-  const draftIndex = library.records.findIndex(
-    (record) => record.id === draftId,
-  );
-  if (draft.story) library.records.unshift(snapshot);
-  else library.records.splice(draftIndex, 1, snapshot);
-  library.currentId = snapshot.id;
-  return snapshot;
-}
