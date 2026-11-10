@@ -1567,3 +1567,32 @@ svg.public-icon { stroke-width: 1.35; }
 .public-hero path { vector-effect: non-scaling-stroke; stroke-width: 2.2; }
 .timer { display: inline-flex; align-items: center; gap: 8px; }
 .timer svg { width: 17px; height: 17px; }
+
+/* Saved story: counts and answer types match Story map. */
+.review-question-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 22px;
+  margin: 14px 0 18px;
+  color: var(--green);
+}
+.review-question-summary > span {
+  padding: 7px 11px;
+  border-radius: 5px;
+}
+.review-count-basic,
+.detail-row.is-basic {
+  background: #fafbf5;
+}
+.review-count-followup,
+.detail-row.is-followup {
+  background: #fffdf2;
+}
+.detail-row.is-basic,
+.detail-row.is-followup {
+  border-color: #d7ddcb;
+}
+.detail-row.user-modified {
+  border-color: #b9a45b;
+}
